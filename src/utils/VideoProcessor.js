@@ -3,19 +3,40 @@
  * Extracts frames from a video file using HTML5 Video and Canvas APIs.
  */
 
-export const extractFrames = (file, fps = 1, onProgress) => {
+export const extractFrames = (file, fps = 1, onProgress, abortSignal = null) => {
   return new Promise((resolve, reject) => {
+    if (abortSignal && abortSignal.aborted) {
+      return reject(new DOMException('Aborted', 'AbortError'));
+    }
+
     const video = document.createElement('video');
     const url = URL.createObjectURL(file);
     video.src = url;
     video.muted = true;
     video.crossOrigin = 'anonymous'; // Generally safe for local files
     
+    let seekTimeout = null;
+
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      if (seekTimeout) clearTimeout(seekTimeout);
+      video.onloadedmetadata = null;
+      video.onseeked = null;
+      video.onerror = null;
+    };
+
+    if (abortSignal) {
+      abortSignal.addEventListener('abort', () => {
+        cleanup();
+        reject(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    }
+    
     video.onloadedmetadata = () => {
       const duration = video.duration;
       if (!duration || !isFinite(duration)) {
+        cleanup();
         reject(new Error('Invalid video duration.'));
-        URL.revokeObjectURL(url);
         return;
       }
 
@@ -31,41 +52,56 @@ export const extractFrames = (file, fps = 1, onProgress) => {
       canvas.height = video.videoHeight;
 
       const captureFrame = () => {
-        // Draw current video frame to canvas
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        // Export as JPEG (lighter than PNG for photos/frames)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        
-        const timestamp = video.currentTime;
-        const formattedTime = new Date(timestamp * 1000).toISOString().substr(14, 5);
+        if (seekTimeout) clearTimeout(seekTimeout);
+        if (abortSignal && abortSignal.aborted) return; // handled by abort listener
 
-        frames.push({
-          id: `frame_${file.name}_${isCapturingLastFrame ? 'final' : currentFrame}`,
-          fileName: file.name,
-          dataUrl,
-          timestamp,
-          formattedTime
-        });
+        try {
+          // Draw current video frame to canvas
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // Export as JPEG (lighter than PNG for photos/frames)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          
+          const timestamp = video.currentTime;
+          const formattedTime = new Date(timestamp * 1000).toISOString().substr(14, 5);
 
-        if (isCapturingLastFrame) {
-          onProgress(100);
-          URL.revokeObjectURL(url);
-          resolve(frames);
-          return;
-        }
+          frames.push({
+            id: `frame_${file.name}_${isCapturingLastFrame ? 'final' : currentFrame}`,
+            fileName: file.name,
+            dataUrl,
+            timestamp,
+            formattedTime
+          });
 
-        currentFrame++;
-        // Use totalFrames + 1 for progress to account for the final frame
-        onProgress(Math.round((currentFrame / (totalFrames + 1)) * 100));
+          if (isCapturingLastFrame) {
+            onProgress(100);
+            cleanup();
+            resolve(frames);
+            return;
+          }
 
-        if (currentFrame < totalFrames) {
-          // Seek to next frame time
-          video.currentTime = currentFrame / fps;
-        } else {
-          // Time to capture the final frame
-          isCapturingLastFrame = true;
-          // Seek to just slightly before the very end to avoid black frames on some browsers
-          video.currentTime = Math.max(0, duration - 0.05);
+          currentFrame++;
+          // Use totalFrames + 1 for progress to account for the final frame
+          onProgress(Math.round((currentFrame / (totalFrames + 1)) * 100));
+
+          if (currentFrame < totalFrames) {
+            // Seek to next frame time
+            video.currentTime = currentFrame / fps;
+          } else {
+            // Time to capture the final frame
+            isCapturingLastFrame = true;
+            // Seek to just slightly before the very end to avoid black frames on some browsers
+            video.currentTime = Math.max(0, duration - 0.05);
+          }
+
+          // Set timeout for the next seek
+          seekTimeout = setTimeout(() => {
+            cleanup();
+            reject(new Error(`Video processing timed out while seeking (Frame ${currentFrame}).`));
+          }, 10000); // 10 second timeout
+
+        } catch (e) {
+          cleanup();
+          reject(e);
         }
       };
 
@@ -74,17 +110,17 @@ export const extractFrames = (file, fps = 1, onProgress) => {
         captureFrame();
       };
 
-      video.onerror = (e) => {
-        URL.revokeObjectURL(url);
-        reject(e);
-      };
-
       // Start the process
       video.currentTime = 0;
+      seekTimeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Video processing timed out while seeking.'));
+      }, 10000);
     };
 
     video.onerror = (e) => {
-      reject(new Error('Error loading video file'));
+      cleanup();
+      reject(new Error('Error loading video file: ' + (video.error ? video.error.message : 'Unknown error')));
     };
   });
 };

@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { UploadCloud, Check, Trash2, Download, Package, RefreshCw, Settings, Play, XSquare, Film, Trash } from 'lucide-react';
+import { UploadCloud, Check, Trash2, Download, Package, RefreshCw, Settings, Play, XSquare, Film, Trash, Maximize2, X, AlertCircle } from 'lucide-react';
 import { extractFrames } from './utils/VideoProcessor';
 import GifMaker from './components/GifMaker';
 import './App.css';
@@ -17,7 +17,45 @@ function App() {
   const [filterVideo, setFilterVideo] = useState('All'); // Filter state
   const [fps, setFps] = useState(1);
   const [showGifMaker, setShowGifMaker] = useState(false);
+  
+  // New States
+  const [instantStart, setInstantStart] = useState(true);
+  const [uploadQueue, setUploadQueue] = useState([]);
+  const [processingError, setProcessingError] = useState(null);
+  const [previewFrame, setPreviewFrame] = useState(null);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
+  const abortControllerRef = useRef(null);
+
   const fileInputRef = useRef(null);
+
+  // Get unique video names for the filter dropdown
+  const uniqueVideos = Array.from(new Set(frames.map(f => f.fileName)));
+  const visibleFrames = frames.filter(f => filterVideo === 'All' || f.fileName === filterVideo);
+  // Calculate selection based on visible frames
+  const visibleSelectedCount = visibleFrames.filter(f => selectedFrameIds.has(f.id)).length;
+  const isAllVisibleSelected = visibleFrames.length > 0 && visibleSelectedCount === visibleFrames.length;
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!previewFrame || visibleFrames.length === 0) return;
+      
+      const currentIndex = visibleFrames.findIndex(f => f.id === previewFrame.id);
+      if (currentIndex === -1) return;
+
+      if (e.key === 'ArrowRight') {
+        const nextIndex = (currentIndex + 1) % visibleFrames.length;
+        setPreviewFrame(visibleFrames[nextIndex]);
+      } else if (e.key === 'ArrowLeft') {
+        const prevIndex = (currentIndex - 1 + visibleFrames.length) % visibleFrames.length;
+        setPreviewFrame(visibleFrames[prevIndex]);
+      } else if (e.key === 'Escape') {
+        setPreviewFrame(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewFrame, visibleFrames]);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -34,7 +72,7 @@ function App() {
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
     if (files.length > 0) {
-      processVideos(files);
+      handleFiles(files);
     } else {
       alert('Please drop valid video files (MP4).');
     }
@@ -43,7 +81,15 @@ function App() {
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
+      handleFiles(files);
+    }
+  };
+
+  const handleFiles = (files) => {
+    if (instantStart) {
       processVideos(files);
+    } else {
+      setUploadQueue(prev => [...prev, ...files]);
     }
   };
 
@@ -54,28 +100,51 @@ function App() {
     setProgress(0);
     setFrames([]);
     setSelectedFrameIds(new Set());
+    setProcessingError(null);
+    setUploadQueue([]);
+
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
     let allFrames = [];
 
     try {
       for (let i = 0; i < files.length; i++) {
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
         const file = files[i];
         setProgressText(`Processing video ${i + 1} of ${files.length}...`);
         
         const extractedFrames = await extractFrames(file, fps, (pct) => {
           const overallPct = ((i * 100) + pct) / files.length;
           setProgress(overallPct);
-        });
+        }, signal);
         
         allFrames = [...allFrames, ...extractedFrames];
       }
       setFrames(allFrames);
     } catch (err) {
-      console.error(err);
-      alert('Error processing video: ' + err.message);
+      if (err.name === 'AbortError') {
+        console.log('Processing cancelled');
+        setFrames(allFrames); // Keep frames extracted so far
+      } else {
+        console.error(err);
+        setProcessingError(err.message || 'An unknown error occurred during processing.');
+      }
     } finally {
       setIsProcessing(false);
+      abortControllerRef.current = null;
     }
+  };
+
+  const cancelProcessing = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  };
+
+  const removeFromQueue = (index) => {
+    setUploadQueue(prev => prev.filter((_, i) => i !== index));
   };
 
   const reprocess = () => {
@@ -94,6 +163,26 @@ function App() {
       }
       return newSet;
     });
+  };
+
+  const handleCardClick = (frame, index, e) => {
+    if (e.shiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(index, lastSelectedIndex);
+      const end = Math.max(index, lastSelectedIndex);
+      
+      const framesToSelect = visibleFrames.slice(start, end + 1);
+      
+      setSelectedFrameIds(prev => {
+        const newSet = new Set(prev);
+        // We probably want to toggle, but shift click usually adds to selection or selects range.
+        // Selecting range is what standard OS does for shift-click
+        framesToSelect.forEach(f => newSet.add(f.id));
+        return newSet;
+      });
+    } else {
+      toggleSelection(frame.id);
+    }
+    setLastSelectedIndex(index);
   };
 
   const selectAll = () => {
@@ -166,6 +255,8 @@ function App() {
     setSelectedFrameIds(new Set());
     setProgress(0);
     setFilterVideo('All');
+    setUploadQueue([]);
+    setProcessingError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -183,40 +274,38 @@ function App() {
     if (targetFrames.length === 0) return;
 
     const zip = new JSZip();
-    targetFrames.forEach((frame) => {
+    targetFrames.forEach((frame, i) => {
       const data = frame.dataUrl.split(',')[1];
       const baseName = getCleanFileName(frame.fileName);
-      zip.file(`${baseName}_${frame.formattedTime.replace(':', '-')}.jpg`, data, { base64: true });
+      // Append index `i` to prevent overwriting when multiple frames share the same formattedTime (e.g. same second)
+      zip.file(`${baseName}_${frame.formattedTime.replace(':', '-')}_${i}.jpg`, data, { base64: true });
     });
 
     const content = await zip.generateAsync({ type: 'blob' });
     saveAs(content, 'video_frames.zip');
   };
 
-  const downloadDirect = () => {
+  const downloadDirect = async () => {
     const targetFrames = selectedFrameIds.size > 0 
       ? frames.filter(f => selectedFrameIds.has(f.id))
       : frames;
 
     if (targetFrames.length === 0) return;
 
-    targetFrames.forEach((frame) => {
+    for (let i = 0; i < targetFrames.length; i++) {
+      const frame = targetFrames[i];
       const a = document.createElement('a');
       const baseName = getCleanFileName(frame.fileName);
       a.href = frame.dataUrl;
-      a.download = `${baseName}_${frame.formattedTime.replace(':', '-')}.jpg`;
+      a.download = `${baseName}_${frame.formattedTime.replace(':', '-')}_${i}.jpg`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    });
+      
+      // Short delay to avoid browser blocking multiple rapid downloads
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
   };
-
-  // Get unique video names for the filter dropdown
-  const uniqueVideos = Array.from(new Set(frames.map(f => f.fileName)));
-  const visibleFrames = frames.filter(f => filterVideo === 'All' || f.fileName === filterVideo);
-  // Calculate selection based on visible frames
-  const visibleSelectedCount = visibleFrames.filter(f => selectedFrameIds.has(f.id)).length;
-  const isAllVisibleSelected = visibleFrames.length > 0 && visibleSelectedCount === visibleFrames.length;
 
   return (
     <div className="app-container">
@@ -224,43 +313,61 @@ function App() {
         <h1>Video Image Cutter</h1>
         <p>Extract, review, and export frames from your video clips, entirely offline.</p>
         <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid var(--accent-color)', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <div>
-            <span style={{ color: 'var(--text-secondary)', marginRight: '0.5rem' }}>Phone Access URL:</span>
-            <strong style={{ color: 'white', letterSpacing: '0.5px' }}>http://{__LOCAL_IP__}:5173</strong>
-          </div>
           <div style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#fca5a5', padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 600 }}>
             Coming Soon: Video Joiner 🎬
           </div>
         </div>
       </header>
 
+      {/* Error Banner */}
+      {processingError && !isProcessing && (
+        <div className="glass-panel animate-fade-in" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--danger-color)', color: '#fca5a5', padding: '1rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <AlertCircle size={20} />
+            <span>{processingError}</span>
+          </div>
+          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem' }} onClick={() => setProcessingError(null)}>Dismiss</button>
+        </div>
+      )}
+
       {/* Upload State */}
-      {!isProcessing && frames.length === 0 && (
+      {!isProcessing && frames.length === 0 && uploadQueue.length === 0 && (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
           
           <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Settings size={20} color="var(--accent-color)" />
-              <span style={{ fontWeight: 500 }}>Extraction Interval</span>
+              <span style={{ fontWeight: 500 }}>Settings</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input 
-                type="number" 
-                min="0.1" 
-                step="0.1"
-                value={fps} 
-                onChange={(e) => setFps(Number(e.target.value))}
-                style={{ 
-                  width: '70px', 
-                  padding: '0.5rem', 
-                  borderRadius: '6px', 
-                  border: '1px solid var(--glass-border)',
-                  background: 'rgba(0,0,0,0.3)',
-                  color: 'white',
-                  textAlign: 'center'
-                }}
-              />
-              <span style={{ color: 'var(--text-secondary)' }}>frames per second</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input 
+                  type="checkbox"
+                  checked={instantStart}
+                  onChange={(e) => setInstantStart(e.target.checked)}
+                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <span style={{ color: 'var(--text-secondary)' }}>Instant Start</span>
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>FPS:</span>
+                <input 
+                  type="number" 
+                  min="0.1" 
+                  step="0.1"
+                  value={fps} 
+                  onChange={(e) => setFps(Number(e.target.value))}
+                  style={{ 
+                    width: '70px', 
+                    padding: '0.4rem', 
+                    borderRadius: '6px', 
+                    border: '1px solid var(--glass-border)',
+                    background: 'rgba(0,0,0,0.3)',
+                    color: 'white',
+                    textAlign: 'center'
+                  }}
+                />
+              </div>
             </div>
           </div>
 
@@ -286,6 +393,62 @@ function App() {
         </div>
       )}
 
+      {/* Queue State */}
+      {!isProcessing && frames.length === 0 && uploadQueue.length > 0 && (
+        <div className="animate-fade-in" style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
+          <div className="glass-panel" style={{ padding: '1.5rem' }}>
+            <h2 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Package size={24} color="var(--accent-color)" />
+              Upload Queue
+            </h2>
+            <div className="upload-queue">
+              {uploadQueue.map((file, index) => (
+                <div key={index} className="queue-item">
+                  <div className="queue-item-info">
+                    <span className="queue-item-name">{file.name}</span>
+                    <span className="queue-item-size">{(file.size / (1024 * 1024)).toFixed(2)} MB</span>
+                  </div>
+                  <button className="btn btn-danger" style={{ padding: '0.4rem' }} onClick={() => removeFromQueue(index)}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
+              <button className="btn btn-secondary" onClick={() => setUploadQueue([])}>
+                <RefreshCw size={18} /> Clear All
+              </button>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>FPS:</span>
+                  <input 
+                    type="number" 
+                    min="0.1" 
+                    step="0.1"
+                    value={fps} 
+                    onChange={(e) => setFps(Number(e.target.value))}
+                    style={{ 
+                      width: '70px', 
+                      padding: '0.4rem', 
+                      borderRadius: '6px', 
+                      border: '1px solid var(--glass-border)',
+                      background: 'rgba(0,0,0,0.3)',
+                      color: 'white',
+                      textAlign: 'center'
+                    }}
+                  />
+                </div>
+                <button className="btn btn-primary" onClick={() => processVideos(uploadQueue)}>
+                  <Play size={18} /> Start Processing
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Processing State */}
       {isProcessing && (
         <div className="glass-panel progress-container animate-fade-in" style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
@@ -294,6 +457,11 @@ function App() {
             <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
           </div>
           <p>{Math.round(progress)}% complete</p>
+          <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center' }}>
+            <button className="btn btn-danger" onClick={cancelProcessing}>
+              <XSquare size={18} /> Cancel Processing
+            </button>
+          </div>
         </div>
       )}
 
@@ -411,18 +579,28 @@ function App() {
           </div>
 
           <div className="gallery">
-            {visibleFrames.map(frame => {
+            {visibleFrames.map((frame, index) => {
               const isSelected = selectedFrameIds.has(frame.id);
               return (
                 <div 
                   key={frame.id} 
                   className={`image-card glass-panel ${isSelected ? 'selected' : ''}`}
-                  onClick={() => toggleSelection(frame.id)}
+                  onClick={(e) => handleCardClick(frame, index, e)}
                 >
                   <img src={frame.dataUrl} alt={`Frame at ${frame.formattedTime}`} loading="lazy" />
                   <div className="checkbox-indicator">
                     {isSelected && <Check size={16} strokeWidth={3} />}
                   </div>
+                  <button 
+                    className="quick-preview-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewFrame(frame);
+                    }}
+                    title="Preview Frame"
+                  >
+                    <Maximize2 size={18} />
+                  </button>
                   <button 
                     className="quick-delete-btn"
                     onClick={(e) => deleteFrame(frame.id, e)}
@@ -447,6 +625,35 @@ function App() {
           onClose={() => setShowGifMaker(false)}
         />
       )}
+
+      {/* Full-Screen Preview Modal */}
+      {previewFrame && (
+        <div className="preview-modal-overlay" onClick={() => setPreviewFrame(null)}>
+          <div className="preview-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="preview-modal-actions">
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  const a = document.createElement('a');
+                  const baseName = getCleanFileName(previewFrame.fileName);
+                  a.href = previewFrame.dataUrl;
+                  a.download = `${baseName}_${previewFrame.formattedTime.replace(':', '-')}.jpg`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }}
+              >
+                <Download size={18} /> Download
+              </button>
+              <button className="btn btn-secondary" onClick={() => setPreviewFrame(null)}>
+                <X size={18} /> Close
+              </button>
+            </div>
+            <img src={previewFrame.dataUrl} className="preview-modal-image" alt="Preview" />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
