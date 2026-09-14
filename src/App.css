@@ -254,6 +254,30 @@ header p {
   background: rgba(239, 68, 68, 0.9);
 }
 
+.quick-delete-video-btn {
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.image-card:hover .quick-delete-video-btn {
+  opacity: 1;
+}
+
+.quick-delete-video-btn:hover {
+  background: rgba(239, 68, 68, 0.9);
+}
+
 /* Upload Queue */
 .upload-queue {
   display: flex;

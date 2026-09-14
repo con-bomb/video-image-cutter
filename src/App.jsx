@@ -639,8 +639,20 @@ function App() {
                   >
                     <Trash size={14} />
                   </button>
-                  <div className="image-time" style={{ bottom: 'auto', top: '8px', left: '8px' }}>
-                    {getCleanFileName(frame.fileName)}
+                  <div className="video-label-container" style={{ position: 'absolute', top: '8px', left: '8px', display: 'flex', gap: '4px', zIndex: 10 }}>
+                    <div className="image-time" style={{ position: 'relative', top: 0, left: 0, bottom: 'auto' }}>
+                      {getCleanFileName(frame.fileName)}
+                    </div>
+                    <button 
+                      className="quick-delete-video-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeVideo(frame.fileName);
+                      }}
+                      title={`Exclude all images from ${frame.fileName}`}
+                    >
+                      <Trash size={12} /> All
+                    </button>
                   </div>
                   <div className="image-time">{frame.formattedTime}</div>
                 </div>
