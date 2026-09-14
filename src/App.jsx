@@ -264,6 +264,18 @@ function App() {
     }
   };
 
+  const removeVideo = (videoName) => {
+    setFrames(prev => prev.filter(f => f.fileName !== videoName));
+    setSelectedFrameIds(prev => {
+      const newSet = new Set(prev);
+      frames.filter(f => f.fileName === videoName).forEach(f => newSet.delete(f.id));
+      return newSet;
+    });
+    setVideoFiles(prev => prev.filter(f => f.name !== videoName));
+    setUploadQueue(prev => prev.filter(f => f.name !== videoName));
+    setFilterVideo('All');
+  };
+
   const getCleanFileName = (fileName) => {
     return fileName.replace(/\.[^/.]+$/, "");
   };
@@ -501,6 +513,15 @@ function App() {
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
+              {filterVideo !== 'All' && (
+                <button 
+                  className="btn btn-danger" 
+                  onClick={() => removeVideo(filterVideo)}
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                >
+                  <Trash2 size={16} /> Remove This Video
+                </button>
+              )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>

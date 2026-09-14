@@ -23,6 +23,10 @@ export const extractFrames = (file, fps = 1, onProgress, abortSignal = null) => 
       video.onloadedmetadata = null;
       video.onseeked = null;
       video.onerror = null;
+      
+      // Force the browser to release the media decoder to prevent PIPELINE_ERROR_DISCONNECTED
+      video.removeAttribute('src');
+      video.load();
     };
 
     if (abortSignal) {
@@ -74,6 +78,11 @@ export const extractFrames = (file, fps = 1, onProgress, abortSignal = null) => 
 
           if (isCapturingLastFrame) {
             onProgress(100);
+            
+            // Clean up canvas memory
+            canvas.width = 0;
+            canvas.height = 0;
+            
             cleanup();
             resolve(frames);
             return;
@@ -83,21 +92,20 @@ export const extractFrames = (file, fps = 1, onProgress, abortSignal = null) => 
           // Use totalFrames + 1 for progress to account for the final frame
           onProgress(Math.round((currentFrame / (totalFrames + 1)) * 100));
 
-          if (currentFrame < totalFrames) {
-            // Seek to next frame time
-            video.currentTime = currentFrame / fps;
-          } else {
-            // Time to capture the final frame
-            isCapturingLastFrame = true;
-            // Seek to just slightly before the very end to avoid black frames on some browsers
-            video.currentTime = Math.max(0, duration - 0.05);
-          }
+          const nextTime = currentFrame < totalFrames ? currentFrame / fps : Math.max(0, duration - 0.05);
+          if (currentFrame >= totalFrames) isCapturingLastFrame = true;
 
-          // Set timeout for the next seek
-          seekTimeout = setTimeout(() => {
-            cleanup();
-            reject(new Error(`Video processing timed out while seeking (Frame ${currentFrame}).`));
-          }, 10000); // 10 second timeout
+          // Add a tiny delay to allow the browser's decoder to breathe
+          setTimeout(() => {
+            if (abortSignal && abortSignal.aborted) return;
+            video.currentTime = nextTime;
+            
+            // Set timeout for the next seek
+            seekTimeout = setTimeout(() => {
+              cleanup();
+              reject(new Error(`Video processing timed out while seeking (Frame ${currentFrame}).`));
+            }, 10000); // 10 second timeout
+          }, 30);
 
         } catch (e) {
           cleanup();
