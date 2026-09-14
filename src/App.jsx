@@ -86,7 +86,9 @@ function App() {
   };
 
   const handleFiles = (files) => {
-    if (instantStart) {
+    // If instantStart is enabled and we are not currently managing a queue, process immediately.
+    // Otherwise, add to the queue.
+    if (instantStart && uploadQueue.length === 0) {
       processVideos(files);
     } else {
       setUploadQueue(prev => [...prev, ...files]);
@@ -251,11 +253,11 @@ function App() {
 
   const reset = () => {
     setFrames([]);
-    setVideoFiles([]);
+    // Move currently loaded videos back into the queue so they can be retained/managed
+    setUploadQueue([...videoFiles]);
     setSelectedFrameIds(new Set());
     setProgress(0);
     setFilterVideo('All');
-    setUploadQueue([]);
     setProcessingError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -319,6 +321,16 @@ function App() {
         </div>
       </header>
 
+      {/* Hidden File Input */}
+      <input 
+        type="file" 
+        multiple
+        ref={fileInputRef} 
+        style={{ display: 'none' }} 
+        accept="video/*"
+        onChange={handleFileSelect}
+      />
+
       {/* Error Banner */}
       {processingError && !isProcessing && (
         <div className="glass-panel animate-fade-in" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--danger-color)', color: '#fca5a5', padding: '1rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -381,14 +393,6 @@ function App() {
             <UploadCloud className="upload-icon" />
             <h2>Drag & Drop MP4s here</h2>
             <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>or click to browse (Multiple files supported)</p>
-            <input 
-              type="file" 
-              multiple
-              ref={fileInputRef} 
-              style={{ display: 'none' }} 
-              accept="video/*"
-              onChange={handleFileSelect}
-            />
           </div>
         </div>
       )}
@@ -397,10 +401,16 @@ function App() {
       {!isProcessing && frames.length === 0 && uploadQueue.length > 0 && (
         <div className="animate-fade-in" style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
           <div className="glass-panel" style={{ padding: '1.5rem' }}>
-            <h2 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Package size={24} color="var(--accent-color)" />
-              Upload Queue
-            </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                <Package size={24} color="var(--accent-color)" />
+                Upload Queue
+              </h2>
+              <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
+                + Add More
+              </button>
+            </div>
+            
             <div className="upload-queue">
               {uploadQueue.map((file, index) => (
                 <div key={index} className="queue-item">
@@ -416,7 +426,7 @@ function App() {
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
-              <button className="btn btn-secondary" onClick={() => setUploadQueue([])}>
+              <button className="btn btn-secondary" onClick={() => { setUploadQueue([]); setVideoFiles([]); }}>
                 <RefreshCw size={18} /> Clear All
               </button>
               
