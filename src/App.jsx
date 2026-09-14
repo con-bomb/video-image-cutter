@@ -685,34 +685,49 @@ function App() {
       {/* Full-Screen Preview Modal */}
       {previewFrame && (
         <div className="preview-modal-overlay" onClick={() => setPreviewFrame(null)}>
-          <div className="preview-modal-content" onClick={e => e.stopPropagation()}>
-            <button className="nav-btn prev-btn" onClick={(e) => navigatePreview('prev', e)}>
-              <ChevronLeft size={36} />
+          <div className="preview-modal-actions" onClick={e => e.stopPropagation()}>
+            <button 
+              className="btn btn-primary" 
+              onClick={() => {
+                const a = document.createElement('a');
+                const baseName = getCleanFileName(previewFrame.fileName);
+                a.href = previewFrame.dataUrl;
+                a.download = `${baseName}_${previewFrame.formattedTime.replace(':', '-')}.jpg`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }}
+            >
+              <Download size={18} /> <span className="hide-mobile">Download</span>
             </button>
-            <div className="preview-modal-actions">
-              <button 
-                className="btn btn-primary" 
-                onClick={() => {
-                  const a = document.createElement('a');
-                  const baseName = getCleanFileName(previewFrame.fileName);
-                  a.href = previewFrame.dataUrl;
-                  a.download = `${baseName}_${previewFrame.formattedTime.replace(':', '-')}.jpg`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                }}
-              >
-                <Download size={18} /> Download
-              </button>
-              <button className="btn btn-secondary" onClick={() => setPreviewFrame(null)}>
-                <X size={18} /> Close
-              </button>
-            </div>
-            <img src={previewFrame.dataUrl} className="preview-modal-image" alt="Preview" />
-            <button className="nav-btn next-btn" onClick={(e) => navigatePreview('next', e)}>
-              <ChevronRight size={36} />
+            <button 
+              className="btn btn-danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                const currentIndex = visibleFrames.findIndex(f => f.id === previewFrame.id);
+                const nextFrame = visibleFrames.length > 1 ? visibleFrames[(currentIndex + 1) % visibleFrames.length] : null;
+                deleteFrame(previewFrame.id, e);
+                setPreviewFrame(nextFrame);
+              }}
+            >
+              <Trash size={18} /> <span className="hide-mobile">Delete</span>
+            </button>
+            <button className="btn btn-secondary" onClick={() => setPreviewFrame(null)}>
+              <X size={18} /> <span className="hide-mobile">Close</span>
             </button>
           </div>
+
+          <button className="nav-btn prev-btn" onClick={(e) => navigatePreview('prev', e)}>
+            <ChevronLeft size={36} />
+          </button>
+
+          <div className="preview-modal-content" onClick={e => e.stopPropagation()}>
+            <img src={previewFrame.dataUrl} className="preview-modal-image" alt="Preview" />
+          </div>
+
+          <button className="nav-btn next-btn" onClick={(e) => navigatePreview('next', e)}>
+            <ChevronRight size={36} />
+          </button>
         </div>
       )}
 
