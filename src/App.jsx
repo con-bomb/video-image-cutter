@@ -502,9 +502,9 @@ function App() {
         <div className="animate-fade-in">
           
           {/* Top Controls Row */}
-          <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Filter by Video:</span>
+          <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', width: '100%' }}>
+              <span style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Filter by Video:</span>
               <select 
                 value={filterVideo} 
                 onChange={(e) => setFilterVideo(e.target.value)}
@@ -515,8 +515,8 @@ function App() {
                   color: 'white',
                   border: '1px solid var(--glass-border)',
                   outline: 'none',
-                  flex: '1 1 auto',
-                  maxWidth: '300px'
+                  flex: 1,
+                  minWidth: 0
                 }}
               >
                 <option value="All">All Videos</option>
@@ -535,7 +535,7 @@ function App() {
               )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>FPS:</span>
                 <input 
@@ -687,6 +687,24 @@ function App() {
       {previewFrame && (
         <div className="preview-modal-overlay" onClick={() => setPreviewFrame(null)}>
           <div className="preview-modal-actions" onClick={e => e.stopPropagation()}>
+            <button 
+              className={`btn ${selectedFrameIds.has(previewFrame.id) ? 'btn-secondary' : 'btn-primary'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedFrameIds(prev => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(previewFrame.id)) {
+                    newSet.delete(previewFrame.id);
+                  } else {
+                    newSet.add(previewFrame.id);
+                  }
+                  return newSet;
+                });
+              }}
+              style={selectedFrameIds.has(previewFrame.id) ? {} : { background: 'var(--accent-color)' }}
+            >
+              <Check size={18} /> <span className="hide-mobile">{selectedFrameIds.has(previewFrame.id) ? 'Unselect' : 'Select'}</span>
+            </button>
             <button 
               className="btn btn-primary" 
               onClick={() => {
