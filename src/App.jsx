@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { UploadCloud, Check, Trash2, Download, Package, RefreshCw, Settings, Play, XSquare, Film, Trash, Maximize2, X, AlertCircle } from 'lucide-react';
+import { UploadCloud, Check, Trash2, Download, Package, RefreshCw, Settings, Play, XSquare, Film, Trash, Maximize2, X, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { extractFrames } from './utils/VideoProcessor';
 import GifMaker from './components/GifMaker';
 import './App.css';
@@ -35,19 +35,29 @@ function App() {
   const visibleSelectedCount = visibleFrames.filter(f => selectedFrameIds.has(f.id)).length;
   const isAllVisibleSelected = visibleFrames.length > 0 && visibleSelectedCount === visibleFrames.length;
 
+  const navigatePreview = (direction, e) => {
+    if (e) e.stopPropagation();
+    if (!previewFrame || visibleFrames.length === 0) return;
+    
+    const currentIndex = visibleFrames.findIndex(f => f.id === previewFrame.id);
+    if (currentIndex === -1) return;
+
+    if (direction === 'next') {
+      const nextIndex = (currentIndex + 1) % visibleFrames.length;
+      setPreviewFrame(visibleFrames[nextIndex]);
+    } else if (direction === 'prev') {
+      const prevIndex = (currentIndex - 1 + visibleFrames.length) % visibleFrames.length;
+      setPreviewFrame(visibleFrames[prevIndex]);
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!previewFrame || visibleFrames.length === 0) return;
-      
-      const currentIndex = visibleFrames.findIndex(f => f.id === previewFrame.id);
-      if (currentIndex === -1) return;
-
       if (e.key === 'ArrowRight') {
-        const nextIndex = (currentIndex + 1) % visibleFrames.length;
-        setPreviewFrame(visibleFrames[nextIndex]);
+        navigatePreview('next');
       } else if (e.key === 'ArrowLeft') {
-        const prevIndex = (currentIndex - 1 + visibleFrames.length) % visibleFrames.length;
-        setPreviewFrame(visibleFrames[prevIndex]);
+        navigatePreview('prev');
       } else if (e.key === 'Escape') {
         setPreviewFrame(null);
       }
@@ -492,8 +502,8 @@ function App() {
         <div className="animate-fade-in">
           
           {/* Top Controls Row */}
-          <div className="glass-panel" style={{ padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Filter by Video:</span>
               <select 
                 value={filterVideo} 
@@ -524,7 +534,7 @@ function App() {
               )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>FPS:</span>
                 <input 
@@ -648,7 +658,7 @@ function App() {
                       onClick={(e) => {
                         e.stopPropagation();
                         const frameCount = frames.filter(f => f.fileName === frame.fileName).length;
-                        if (window.confirm(`Are you sure you want to delete all ${frameCount} photos?`)) {
+                        if (window.confirm(`Are you sure you want to delete all ${frameCount} photos from "${frame.fileName}"?`)) {
                           removeVideo(frame.fileName);
                         }
                       }}
@@ -676,6 +686,9 @@ function App() {
       {previewFrame && (
         <div className="preview-modal-overlay" onClick={() => setPreviewFrame(null)}>
           <div className="preview-modal-content" onClick={e => e.stopPropagation()}>
+            <button className="nav-btn prev-btn" onClick={(e) => navigatePreview('prev', e)}>
+              <ChevronLeft size={36} />
+            </button>
             <div className="preview-modal-actions">
               <button 
                 className="btn btn-primary" 
@@ -696,6 +709,9 @@ function App() {
               </button>
             </div>
             <img src={previewFrame.dataUrl} className="preview-modal-image" alt="Preview" />
+            <button className="nav-btn next-btn" onClick={(e) => navigatePreview('next', e)}>
+              <ChevronRight size={36} />
+            </button>
           </div>
         </div>
       )}
