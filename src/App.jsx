@@ -368,12 +368,12 @@ function App() {
       {!isProcessing && frames.length === 0 && uploadQueue.length === 0 && (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
           
-          <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Settings size={20} color="var(--accent-color)" />
               <span style={{ fontWeight: 500 }}>Settings</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                 <input 
                   type="checkbox"
@@ -515,7 +515,8 @@ function App() {
                   color: 'white',
                   border: '1px solid var(--glass-border)',
                   outline: 'none',
-                  minWidth: '200px'
+                  flex: '1 1 auto',
+                  maxWidth: '300px'
                 }}
               >
                 <option value="All">All Videos</option>

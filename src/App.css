@@ -251,6 +251,13 @@ header p {
   opacity: 1;
 }
 
+@media (max-width: 768px) {
+  .quick-delete-btn,
+  .quick-delete-video-btn {
+    opacity: 0.85 !important;
+  }
+}
+
 .quick-delete-btn:hover {
   background: rgba(239, 68, 68, 0.9);
 }
