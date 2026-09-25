@@ -23,15 +23,21 @@ export default function BatchCrop({ frames, onClose }) {
   const currentCrop = crops[currentFrame.id];
 
   // Measure the actual available space for the image
+  // Re-run when previewMode changes so we re-attach to the fresh DOM element
   useEffect(() => {
+    if (previewMode) return; // crop-workspace not in DOM during preview
     const el = cropWorkspaceRef.current;
     if (!el) return;
-    const measure = () => setMaxImgH(el.clientHeight);
-    measure();
+    const measure = () => {
+      const h = el.clientHeight;
+      if (h > 0) setMaxImgH(h); // guard against 0 from unmounting
+    };
+    // Use requestAnimationFrame to ensure layout has settled
+    requestAnimationFrame(measure);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [previewMode]);
 
   const handleImageLoad = (e, frameId) => {
     setImgRefs(prev => ({ ...prev, [frameId]: e.currentTarget }));
