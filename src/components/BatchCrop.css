@@ -81,23 +81,15 @@
 }
 
 .ReactCrop {
-  display: flex; /* Flex container to propagate constraints */
+  display: inline-block !important; /* MUST shrink-wrap to image size */
   max-width: 100%;
   max-height: 100%;
-}
-
-.ReactCrop__child-wrapper {
-  display: flex;
-  max-width: 100%;
-  max-height: 100%;
-  justify-content: center;
-  align-items: center;
 }
 
 .crop-image {
   display: block;
-  max-width: 100%;
-  max-height: 100%; 
+  max-width: calc(100vw - 6rem);
+  max-height: calc(95vh - 280px);
   width: auto;
   height: auto;
 }

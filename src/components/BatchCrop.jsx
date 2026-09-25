@@ -8,8 +8,9 @@ import './BatchCrop.css';
 
 export default function BatchCrop({ frames, onClose }) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [crops, setCrops] = useState({}); // { frameId: cropObject }
-  const [completedCrops, setCompletedCrops] = useState({}); // To hold pixel-based crops
+  const [crops, setCrops] = useState({}); // { frameId: percentCrop } for display
+  const [pixelCrops, setPixelCrops] = useState({}); // { frameId: pixelCrop } for export
+  const [imgDims, setImgDims] = useState({}); // { frameId: { w, h } } displayed size at crop time
   const [imgRefs, setImgRefs] = useState({});
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -23,82 +24,86 @@ export default function BatchCrop({ frames, onClose }) {
     setImgRefs(prev => ({ ...prev, [frameId]: e.currentTarget }));
   };
 
-  const handleCropChange = (crop, percentCrop) => {
+  const handleCropChange = (pixelCrop, percentCrop) => {
+    // Store percent crop for display (survives resize)
     setCrops(prev => ({ ...prev, [currentFrame.id]: percentCrop }));
   };
 
-  const handleCropComplete = (crop, percentCrop) => {
-    if (percentCrop && percentCrop.width > 0 && percentCrop.height > 0) {
-      setCompletedCrops(prev => ({ ...prev, [currentFrame.id]: percentCrop }));
+  const handleCropComplete = (pixelCrop, percentCrop) => {
+    if (pixelCrop && pixelCrop.width > 0 && pixelCrop.height > 0) {
+      // Store the pixel crop AND the current displayed image dimensions
+      setPixelCrops(prev => ({ ...prev, [currentFrame.id]: pixelCrop }));
+      const imgEl = imgRefs[currentFrame.id];
+      if (imgEl) {
+        setImgDims(prev => ({ ...prev, [currentFrame.id]: { w: imgEl.width, h: imgEl.height } }));
+      }
     } else {
-      setCompletedCrops(prev => {
-        const newCrops = { ...prev };
-        delete newCrops[currentFrame.id];
-        return newCrops;
+      setPixelCrops(prev => {
+        const n = { ...prev };
+        delete n[currentFrame.id];
+        return n;
       });
     }
   };
 
   const copyCropToAll = () => {
     const currentPercentCrop = crops[currentFrame.id];
-    const currentCompletedCrop = completedCrops[currentFrame.id];
+    const currentPixelCrop = pixelCrops[currentFrame.id];
+    const currentDims = imgDims[currentFrame.id];
     
-    if (!currentPercentCrop || !currentCompletedCrop) {
+    if (!currentPercentCrop || !currentPixelCrop) {
       alert("Please draw a crop area on the current image first.");
       return;
     }
 
     const newCrops = { ...crops };
-    const newCompletedCrops = { ...completedCrops };
+    const newPixelCrops = { ...pixelCrops };
+    const newImgDims = { ...imgDims };
 
     frames.forEach(f => {
       newCrops[f.id] = { ...currentPercentCrop };
-      newCompletedCrops[f.id] = { ...currentCompletedCrop };
+      newPixelCrops[f.id] = { ...currentPixelCrop };
+      if (currentDims) {
+        newImgDims[f.id] = { ...currentDims };
+      }
     });
 
     setCrops(newCrops);
-    setCompletedCrops(newCompletedCrops);
+    setPixelCrops(newPixelCrops);
+    setImgDims(newImgDims);
   };
 
   const getCleanFileName = (fileName) => {
     return fileName.replace(/\.[^/.]+$/, "");
   };
 
-  const getCroppedImg = async (imageElement, percentCrop, frame) => {
+  // Use pixel crop + displayed dimensions to compute exact natural-image crop
+  const getCroppedImg = async (imageElement, pixelCrop, displayedDims) => {
     const canvas = document.createElement('canvas');
     
-    if (!percentCrop || percentCrop.width === 0 || percentCrop.height === 0) {
+    if (!pixelCrop || pixelCrop.width === 0 || pixelCrop.height === 0) {
       canvas.width = imageElement.naturalWidth;
       canvas.height = imageElement.naturalHeight;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(imageElement, 0, 0);
     } else {
-      const cropX = (percentCrop.x / 100) * imageElement.naturalWidth;
-      const cropY = (percentCrop.y / 100) * imageElement.naturalHeight;
-      const cropWidth = (percentCrop.width / 100) * imageElement.naturalWidth;
-      const cropHeight = (percentCrop.height / 100) * imageElement.naturalHeight;
+      // Scale from displayed pixel coords to natural image coords
+      const scaleX = imageElement.naturalWidth / displayedDims.w;
+      const scaleY = imageElement.naturalHeight / displayedDims.h;
 
-      canvas.width = Math.floor(cropWidth);
-      canvas.height = Math.floor(cropHeight);
+      const sx = Math.round(pixelCrop.x * scaleX);
+      const sy = Math.round(pixelCrop.y * scaleY);
+      const sw = Math.round(pixelCrop.width * scaleX);
+      const sh = Math.round(pixelCrop.height * scaleY);
+
+      canvas.width = sw;
+      canvas.height = sh;
       const ctx = canvas.getContext('2d');
-
-      ctx.drawImage(
-        imageElement,
-        cropX,
-        cropY,
-        cropWidth,
-        cropHeight,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
+      ctx.drawImage(imageElement, sx, sy, sw, sh, 0, 0, sw, sh);
     }
 
     return new Promise((resolve) => {
-      canvas.toBlob((blob) => {
-        resolve(blob);
-      }, 'image/jpeg', 0.95);
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.95);
     });
   };
 
@@ -118,14 +123,15 @@ export default function BatchCrop({ frames, onClose }) {
 
     for (let i = 0; i < frames.length; i++) {
       const frame = frames[i];
-      const crop = completedCrops[frame.id];
+      const pxCrop = pixelCrops[frame.id];
+      const dims = imgDims[frame.id];
       
       try {
         const imageElement = await loadImage(frame.dataUrl);
-        const blob = await getCroppedImg(imageElement, crop, frame);
+        const blob = await getCroppedImg(imageElement, pxCrop, dims);
         const url = URL.createObjectURL(blob);
         const baseName = getCleanFileName(frame.fileName);
-        const suffix = crop ? "_crop" : "";
+        const suffix = pxCrop ? "_crop" : "";
         const fileName = `${baseName}_${frame.formattedTime.replace(':', '-')}${suffix}_${i}.jpg`;
         
         newPreviews.push({ url, fileName, blob });
@@ -223,7 +229,7 @@ export default function BatchCrop({ frames, onClose }) {
             <div className="batch-crop-carousel">
               {frames.map((frame, index) => {
                 const isActive = index === currentIndex;
-                const isCropped = !!completedCrops[frame.id];
+                const isCropped = !!pixelCrops[frame.id];
                 
                 return (
                   <div 
