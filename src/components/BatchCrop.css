@@ -88,8 +88,8 @@
 
 .crop-image {
   display: block;
-  max-width: calc(100vw - 6rem);
-  max-height: calc(95vh - 280px);
+  max-width: 100%;
+  /* max-height is set via inline style from JS measurement */
   width: auto;
   height: auto;
 }

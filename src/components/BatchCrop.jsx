@@ -16,9 +16,22 @@ export default function BatchCrop({ frames, onClose }) {
   const [exportProgress, setExportProgress] = useState(0);
   const [previewMode, setPreviewMode] = useState(false);
   const [previewImages, setPreviewImages] = useState([]);
-  
+  const cropWorkspaceRef = useRef(null);
+  const [maxImgH, setMaxImgH] = useState(300); // safe small default
+
   const currentFrame = frames[currentIndex];
   const currentCrop = crops[currentFrame.id];
+
+  // Measure the actual available space for the image
+  useEffect(() => {
+    const el = cropWorkspaceRef.current;
+    if (!el) return;
+    const measure = () => setMaxImgH(el.clientHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const handleImageLoad = (e, frameId) => {
     setImgRefs(prev => ({ ...prev, [frameId]: e.currentTarget }));
@@ -209,7 +222,7 @@ export default function BatchCrop({ frames, onClose }) {
         ) : (
           <>
             <div className="batch-crop-main-area">
-              <div className="crop-workspace">
+              <div className="crop-workspace" ref={cropWorkspaceRef}>
                 <ReactCrop
                   crop={currentCrop}
                   onChange={handleCropChange}
@@ -220,6 +233,7 @@ export default function BatchCrop({ frames, onClose }) {
                     alt="To crop" 
                     onLoad={(e) => handleImageLoad(e, currentFrame.id)}
                     className="crop-image"
+                    style={{ maxHeight: `${maxImgH}px` }}
                   />
                 </ReactCrop>
               </div>
