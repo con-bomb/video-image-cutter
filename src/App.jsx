@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { UploadCloud, Check, Trash2, Download, Package, RefreshCw, Settings, Play, XSquare, Film, Trash, Maximize2, X, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { UploadCloud, Check, Trash2, Download, Package, RefreshCw, Settings, Play, XSquare, Film, Trash, Maximize2, X, AlertCircle, ChevronLeft, ChevronRight, Crop } from 'lucide-react';
 import { extractFrames } from './utils/VideoProcessor';
 import GifMaker from './components/GifMaker';
+import BatchCrop from './components/BatchCrop';
 import './App.css';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
   const [filterVideo, setFilterVideo] = useState('All'); // Filter state
   const [fps, setFps] = useState(1);
   const [showGifMaker, setShowGifMaker] = useState(false);
+  const [showBatchCrop, setShowBatchCrop] = useState(false);
   
   // New States
   const [instantStart, setInstantStart] = useState(true);
@@ -617,6 +619,15 @@ function App() {
               >
                 <Film size={18} /> Make GIF
               </button>
+
+              <button 
+                className="btn btn-primary" 
+                style={{ background: 'linear-gradient(135deg, #ec4899, #8b5cf6)' }}
+                disabled={selectedFrameIds.size === 0}
+                onClick={() => setShowBatchCrop(true)}
+              >
+                <Crop size={18} /> Crop Selected
+              </button>
             </div>
           </div>
 
@@ -680,6 +691,13 @@ function App() {
         <GifMaker 
           frames={frames.filter(f => selectedFrameIds.has(f.id))}
           onClose={() => setShowGifMaker(false)}
+        />
+      )}
+
+      {showBatchCrop && (
+        <BatchCrop 
+          frames={frames.filter(f => selectedFrameIds.has(f.id))}
+          onClose={() => setShowBatchCrop(false)}
         />
       )}
 
