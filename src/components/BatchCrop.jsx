@@ -44,9 +44,9 @@ export default function BatchCrop({ frames, onClose }) {
 
   const handleCropComplete = (pixelCrop, percentCrop) => {
     if (pixelCrop && pixelCrop.width > 0 && pixelCrop.height > 0) {
-      // Store the pixel crop AND the current displayed image dimensions
       setPixelCrops(prev => ({ ...prev, [currentFrame.id]: pixelCrop }));
-      const imgEl = imgRefs[currentFrame.id];
+      // Query the actual displayed image from the DOM — reliable regardless of onLoad timing
+      const imgEl = cropWorkspaceRef.current?.querySelector('.crop-image');
       if (imgEl) {
         setImgDims(prev => ({ ...prev, [currentFrame.id]: { w: imgEl.width, h: imgEl.height } }));
       }
@@ -101,8 +101,11 @@ export default function BatchCrop({ frames, onClose }) {
       ctx.drawImage(imageElement, 0, 0);
     } else {
       // Scale from displayed pixel coords to natural image coords
-      const scaleX = imageElement.naturalWidth / displayedDims.w;
-      const scaleY = imageElement.naturalHeight / displayedDims.h;
+      // Fallback to natural dims if displayed dims weren't captured
+      const dw = displayedDims?.w || imageElement.naturalWidth;
+      const dh = displayedDims?.h || imageElement.naturalHeight;
+      const scaleX = imageElement.naturalWidth / dw;
+      const scaleY = imageElement.naturalHeight / dh;
 
       const sx = Math.round(pixelCrop.x * scaleX);
       const sy = Math.round(pixelCrop.y * scaleY);
