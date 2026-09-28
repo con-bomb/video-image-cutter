@@ -82,11 +82,11 @@ function App() {
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/') || f.type.startsWith('image/'));
     if (files.length > 0) {
       handleFiles(files);
     } else {
-      alert('Please drop valid video files (MP4).');
+      alert('Please drop valid video or image files.');
     }
   };
 
@@ -101,13 +101,30 @@ function App() {
     // If instantStart is enabled and we are not currently managing a queue, process immediately.
     // Otherwise, add to the queue.
     if (instantStart && uploadQueue.length === 0) {
-      processVideos(files);
+      processFiles(files);
     } else {
       setUploadQueue(prev => [...prev, ...files]);
     }
   };
 
-  const processVideos = async (files) => {
+  const readImageAsFrame = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve({
+          id: `${file.name}-img-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          dataUrl: reader.result,
+          timestamp: 0,
+          formattedTime: 'photo',
+          fileName: file.name,
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFiles = async (files) => {
     setVideoFiles(files); // Save for reprocessing
     setFilterVideo('All'); // Reset filter
     setIsProcessing(true);
@@ -122,19 +139,39 @@ function App() {
 
     let allFrames = [];
 
+    // Separate files into videos and images
+    const videoFiles = files.filter(f => f.type.startsWith('video/'));
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    const totalFiles = videoFiles.length + (imageFiles.length > 0 ? 1 : 0); // images count as 1 batch
+    let processedCount = 0;
+
     try {
-      for (let i = 0; i < files.length; i++) {
+      // Process images first (fast)
+      if (imageFiles.length > 0) {
+        setProgressText(`Loading ${imageFiles.length} image${imageFiles.length > 1 ? 's' : ''}...`);
+        for (const imgFile of imageFiles) {
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          const frame = await readImageAsFrame(imgFile);
+          allFrames.push(frame);
+        }
+        processedCount++;
+        setProgress((processedCount / totalFiles) * 100);
+      }
+
+      // Process videos
+      for (let i = 0; i < videoFiles.length; i++) {
         if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-        const file = files[i];
-        setProgressText(`Processing video ${i + 1} of ${files.length}...`);
+        const file = videoFiles[i];
+        setProgressText(`Processing video ${i + 1} of ${videoFiles.length}...`);
         
         const extractedFrames = await extractFrames(file, fps, (pct) => {
-          const overallPct = ((i * 100) + pct) / files.length;
+          const overallPct = ((processedCount * 100) + pct) / totalFiles;
           setProgress(overallPct);
         }, signal);
         
         allFrames = [...allFrames, ...extractedFrames];
+        processedCount++;
       }
       setFrames(allFrames);
     } catch (err) {
@@ -163,7 +200,7 @@ function App() {
 
   const reprocess = () => {
     if (videoFiles.length > 0) {
-      processVideos(videoFiles);
+      processFiles(videoFiles);
     }
   };
 
@@ -351,7 +388,7 @@ function App() {
         multiple
         ref={fileInputRef} 
         style={{ display: 'none' }} 
-        accept="video/*"
+        accept="video/*,image/*"
         onChange={handleFileSelect}
       />
 
@@ -415,7 +452,7 @@ function App() {
             onClick={() => fileInputRef.current?.click()}
           >
             <UploadCloud className="upload-icon" />
-            <h2>Drag & Drop MP4s here</h2>
+            <h2>Drag & Drop Videos or Photos here</h2>
             <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>or click to browse (Multiple files supported)</p>
           </div>
         </div>
@@ -474,7 +511,7 @@ function App() {
                     }}
                   />
                 </div>
-                <button className="btn btn-primary" onClick={() => processVideos(uploadQueue)}>
+                <button className="btn btn-primary" onClick={() => processFiles(uploadQueue)}>
                   <Play size={18} /> Start Processing
                 </button>
               </div>
